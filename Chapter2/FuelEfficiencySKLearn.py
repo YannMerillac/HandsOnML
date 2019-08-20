@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
-import os
-import tarfile
-from six.moves import urllib
-import pandas as pd
-import numpy as np
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
-# scikit learn imports
-from sklearn.model_selection import StratifiedShuffleSplit
+import pandas as pd
+import seaborn as sns
+import numpy as np
+
+from tensorflow import keras
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OneHotEncoder
@@ -15,30 +14,17 @@ from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import mean_squared_error
 
-def load_housing_data(housing_url=None, housing_path=None, overwrite=False):
-    """
-    Download and Extract dataset
-    """
-    print("***** Extracting data *****")
-    DOWNLOAD_ROOT = "https://raw.githubusercontent.com/ageron/handson-ml/master/"
-    HOUSING_PATH = os.path.join("datasets","housing")
-    HOUSING_URL = DOWNLOAD_ROOT + "datasets/housing/housing.tgz"
-    if housing_url is None:
-        housing_url = HOUSING_URL
-    if housing_path is None:
-        housing_path = HOUSING_PATH
-    if not os.path.isdir(housing_path):
-        os.makedirs(housing_path)
-    housing_csv = os.path.join(housing_path,'housing.csv')
-    if not os.path.exists(housing_csv) or overwrite:
-        print(" - Downloading dataset from "+housing_url)
-        tgz_path = os.path.join(housing_path, "housing.tgz")
-        urllib.request.urlretrieve(housing_url, tgz_path)
-        housing_tgz = tarfile.open(tgz_path)
-        housing_tgz.extractall(path=housing_path)
-        housing_tgz.close()
-    print(" - Loading "+housing_csv)
-    return pd.read_csv(housing_csv)
+# get data
+dataset_path = keras.utils.get_file("auto-mpg.data", "http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data")
+print("Dataset downloaded in :"+dataset_path)
+
+column_names = ['MPG','Cylinders','Displacement','Horsepower','Weight',
+                'Acceleration', 'Model Year', 'Origin']
+
+
+raw_dataset = pd.read_csv(dataset_path, names=column_names,
+                      na_values = "?", comment='\t',
+                      sep=" ", skipinitialspace=True)
 
 def visualize_dataset(dataset):
     """
@@ -49,61 +35,45 @@ def visualize_dataset(dataset):
     print(dataset.describe())
     # Plot histograms
     print(" - Histograms plots")
-    #plt.figure()
     dataset.hist(bins=50, figsize=(30,15))
-    print(" - Coordinates plots")
-    #plt.figure()
-    housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
-                 s=dataset["population"]/100., label="population", figsize=(10,7),
-                 c="median_house_value",
-                 cmap=plt.get_cmap("jet"), colorbar=True)
-    plt.legend()
-    print(" - Correlations plots")
-    #plt.figure()
     corr_matrix = dataset.corr()
     # Plot correlations
-    mhv_corr = corr_matrix["median_house_value"].sort_values(ascending=False)
-    print(" - Correlations: median_house_value")
-    print(mhv_corr)
-    attributes = ["median_house_value", "median_income",
-                  "total_rooms", "housing_median_age"]
+    mpg_corr = corr_matrix["MPG"].sort_values(ascending=False)
+    print(" - Correlations: MPG")
+    print(mpg_corr)
+    attributes = column_names
     pd.plotting.scatter_matrix(dataset[attributes],figsize=(12,8))
     plt.show()
-
-def split_dataset(dataset,test_size=0.2,random_state=42, clip_dataset=False):
-    """
-    Split dataset into train/test sets
-    """
-    print("***** Splitting data in train/test sets *****")
-    #  use stratified sampling by median income categories
-    dataset["income_cat"] = pd.cut(dataset["median_income"],
-                                   bins=[0., 1.5, 3., 4.5, 6., np.inf],
-                                   labels=[1, 2, 3, 4, 5])
-    if clip_dataset:
-        dataset = dataset[dataset['median_house_value']<500000.0]
-    split = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    for train_index, test_index in split.split(dataset, dataset['income_cat']):
-        train_set = dataset.iloc[train_index]
-        test_set = dataset.iloc[test_index]
-    train_set = train_set.drop("income_cat", axis=1)
-    test_set = test_set.drop("income_cat", axis=1)
-    print(" - Train set size: "+str(len(train_set)))
-    print(" - Test set size: "+str(len(test_set)))
-    return train_set, test_set
-
+    
 def prepare_data(dataset):
+    dataset = dataset.dropna()
+    origin = dataset.pop('Origin')
+
+    dataset['USA'] = (origin == 1)*1.0
+    dataset['Europe'] = (origin == 2)*1.0
+    dataset['Japan'] = (origin == 3)*1.0
+    dataset.tail()
+
+    train_x = dataset.sample(frac=0.8,random_state=0)
+    test_x = dataset.drop(train_x.index)
+    
+    train_y = train_x.pop('MPG')
+    test_y = test_x.pop('MPG')
+    return train_x,train_y,test_x,test_y
+
+def prepare_data_v2(dataset):
     """
     Prepare data for ML algo:
     - Encode categorical attributes
     - Scale numerical attributes
     """
     print("***** Preparing data *****")
-    data_x = dataset.drop("median_house_value", axis=1)
-    data_y = dataset["median_house_value"].copy()
+    data_x = dataset.drop("MPG", axis=1)
+    data_y = dataset["MPG"].copy()
     # split dataset into numerical and categorical datasets
-    x_num = data_x.drop("ocean_proximity", axis=1)
+    x_num = data_x.drop("Origin", axis=1)
     num_attribs = list(x_num)
-    cat_attribs = ["ocean_proximity"]
+    cat_attribs = ["Origin"]
     x_cat = data_x[cat_attribs]
     print(" - Numerical attributes: "+str(num_attribs))
     print(" - Categorical attributes: "+str(cat_attribs))
@@ -122,7 +92,6 @@ def prepare_data(dataset):
     # build final pre processed data
     data_x_prepared = full_pipeline.fit_transform(data_x)
     return data_x_prepared, data_y
-
 
 def tune_model(data_x, data_y, model="RandomForestRegressor", tuning_method="Random"):
     from sklearn.model_selection import RandomizedSearchCV
@@ -189,22 +158,33 @@ def scatter_plot_with_correlation_line(x, y, graph_filepath=None):
     axes.add_artist(annchored_text)
     # Save figure
     plt.show()#savefig(graph_filepath, dpi=300, format='png', bbox_inches='tight')
+
     
-housing = load_housing_data()
-#visualize_dataset(housing)
+#visualize_dataset(raw_dataset)
+#train_x,train_y,test_x,test_y = prepare_data(raw_dataset)
+train_data = raw_dataset.sample(frac=0.8,random_state=0)
+test_data = raw_dataset.drop(train_data.index)
 
-train_data,test_data = split_dataset(housing,clip_dataset=True)
-train_x,train_y = prepare_data(train_data)
+train_x,train_y = prepare_data_v2(train_data)
+test_x,test_y = prepare_data_v2(test_data)
 
-model = tune_model(train_x, train_y, model="RandomForestRegressor", tuning_method="Random")
-print(model)
+#model = tune_model(train_x, train_y, model="SVR", tuning_method="Random")
+#print(model)
+
+# from sklearn.ensemble import RandomForestRegressor
+# model = RandomForestRegressor(max_features=7,n_estimators=250)
+# model.fit(train_x,train_y)
+
+from sklearn.svm import SVR
+model = SVR(C=80.,gamma=0.2)
+model.fit(train_x, train_y)
 
 # valid model
-test_x,test_y = prepare_data(test_data)
 predicted_y = model.predict(test_x)
 
 lin_mse = mean_squared_error(test_y,predicted_y)
 lin_rmse = np.sqrt(lin_mse)
 print("RMS Error = "+str(lin_rmse))
 scatter_plot_with_correlation_line(test_y,predicted_y)
-    
+
+
