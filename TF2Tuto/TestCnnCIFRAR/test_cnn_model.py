@@ -15,12 +15,13 @@ def predict_img(input_file,model,class_names):
     test_img = Image.open(input_file).resize((IMG_SIZE,IMG_SIZE))
     test_vect = np.array(test_img)/255.
     prediction = model.predict(test_vect[np.newaxis, ...])
-    print(prediction)
-    print(np.max(prediction))
+    #print(prediction)
+    precision = np.max(prediction)
+    #print(precision)
     predicted_label = class_names[np.argmax(prediction[0])]
     plt.imshow(test_img)
     plt.axis('off')
-    _ = plt.title("Prediction: " + predicted_label)
+    _ = plt.title("Prediction: " + predicted_label+" : "+str(100.*precision)+" %")
     plt.show()
 
 
@@ -32,5 +33,8 @@ model = tf.keras.models.load_model('Cifrar10CnnModel10Epochs.h5')
 model.summary()
 
 
-#predict_img("camion.jfif",model,LABEL_LIST)
-predict_img("petrolier.jpeg",model,LABEL_LIST)
+predict_img("TestImg/camion.jfif",model,LABEL_LIST)
+predict_img("TestImg/petrolier.jpeg",model,LABEL_LIST)
+predict_img("TestImg/clio1.jfif",model,LABEL_LIST)
+predict_img("TestImg/mouette.jpg",model,LABEL_LIST)
+predict_img("TestImg/airbus.jpg",model,LABEL_LIST)
