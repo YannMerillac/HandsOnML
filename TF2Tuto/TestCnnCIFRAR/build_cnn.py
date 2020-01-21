@@ -54,3 +54,5 @@ plt.ylim([0.5, 1])
 plt.legend(loc='lower right')
 
 test_loss, test_acc = model.evaluate(test_images,  test_labels, verbose=2)
+
+model.save('Cifrar10CnnModel10Epochs.h5')
